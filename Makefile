@@ -19,8 +19,8 @@ test:
 publish:
 	git tag -a v$(VERSION) -m 'version $(VERSION)'
 	git push --tags origin master
-	python setup.py sdist bdist_wheel
-	twine upload --repository-url https://upload.pypi.org/legacy/ --repository testpypi dist/internetarchive-$(VERSION).tar.gz
+	python -m build
+	twine upload --repository pypi ./dist/*
 
 docs-init:
 	pip install -r docs/requirements.txt

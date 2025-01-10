@@ -1,7 +1,7 @@
 #
 # The internetarchive module is a Python/CLI interface to Archive.org.
 #
-# Copyright (C) 2012-2019 Internet Archive
+# Copyright (C) 2012-2024 Internet Archive
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -23,7 +23,7 @@ internetarchive.search
 This module provides objects for interacting with the Archive.org
 search engine.
 
-:copyright: (C) 2012-2019 by Internet Archive.
+:copyright: (C) 2012-2024 by Internet Archive.
 :license: AGPL 3, see LICENSE for more details.
 """
 import itertools
@@ -130,7 +130,7 @@ class Search:
                              auth=self.auth,
                              **self.request_kwargs)
         j = r.json()
-        num_found = int(j['response']['numFound'])
+        num_found = int(j.get('response', {}).get('numFound', 0))
         if not self._num_found:
             self._num_found = num_found
         if j.get('error'):
@@ -153,7 +153,7 @@ class Search:
             if j.get('error'):
                 yield j
             if not num_found:
-                num_found = int(j['total'])
+                num_found = int(j.get('total') or '0')
             if not self._num_found:
                 self._num_found = num_found
             self._handle_scrape_error(j)
@@ -211,10 +211,14 @@ class Search:
     def _user_aggs(self):
         """Experimental support for user aggregations.
         """
+        del self.params['count']  # advanced search will error if this param is present!
         self.params['page'] = '1'
         self.params['rows'] = '1'
         self.params['output'] = 'json'
-        r = self.session.get(self.search_url, params=self.params, **self.request_kwargs)
+        r = self.session.get(self.search_url,
+                             params=self.params,
+                             auth=self.auth,
+                             **self.request_kwargs)
         j = r.json()
         if j.get('error'):
             yield j
@@ -224,7 +228,18 @@ class Search:
     @property
     def num_found(self):
         if not self._num_found:
-            if not self.fts:
+            if not self.fts and 'page' in self.params:
+                p = self.params.copy()
+                p['output'] = 'json'
+                r = self.session.get(self.search_url,
+                                     params=p,
+                                     auth=self.auth,
+                                     **self.request_kwargs)
+                j = r.json()
+                num_found = int(j.get('response', {}).get('numFound', 0))
+                if not self._num_found:
+                    self._num_found = num_found
+            elif not self.fts:
                 p = self.params.copy()
                 p['total_only'] = 'true'
                 r = self.session.post(self.scrape_url,

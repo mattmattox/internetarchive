@@ -1,7 +1,7 @@
 #
 # The internetarchive module is a Python/CLI interface to Archive.org.
 #
-# Copyright (C) 2012-2019 Internet Archive
+# Copyright (C) 2012-2024 Internet Archive
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -20,7 +20,7 @@
 internetarchive.config
 ~~~~~~~~~~~~~~~~~~~~~~
 
-:copyright: (C) 2012-2019 by Internet Archive.
+:copyright: (C) 2012-2024 by Internet Archive.
 :license: AGPL 3, see LICENSE for more details.
 """
 from __future__ import annotations
@@ -28,6 +28,7 @@ from __future__ import annotations
 import os
 from collections import defaultdict
 from configparser import RawConfigParser
+from time import sleep
 from typing import Mapping
 
 import requests
@@ -41,7 +42,8 @@ def get_auth_config(email: str, password: str, host: str = 'archive.org') -> dic
     u = f'https://{host}/services/xauthn/'
     p = {'op': 'login'}
     d = {'email': email, 'password': password}
-    r = requests.post(u, params=p, data=d)
+    r = requests.post(u, params=p, data=d, timeout=10)
+    sleep(2)
     j = r.json()
     if not j.get('success'):
         try:

@@ -3,6 +3,131 @@
 Release History
 ---------------
 
+5.2.0 (2025-01-10)
+++++++++++++++++++
+
+**Bugfixes**
+
+- Fixed bug where failed requests to IA-S3 check_limit API would be treated as a 503 slowdown error.
+
+5.1.0 (2025-01-07)
+++++++++++++++++++
+
+**Features and Improvements**
+
+- added ``--reduced-priority`` option to ``ia metadata``.
+
+**Bugfixes**
+
+- Fixed bugs for URL parameter options in CLI.
+- Fixed various bugs and simplified CLI options with KEY:VALUE values.
+- Fixed bug in ``ia --host <cmd>`` where the host was not being set correctly.
+- Removed identifier validation from ``ia reviews``.
+
+5.0.4 (2024-12-10)
+++++++++++++++++++
+
+**Bugfixes**
+
+- Fixed bug where ``ia delete --no-backup`` was not turning off backups.
+- Fixed bug where ``ia delete`` required you specify a file.
+- Fixed bug where ``ia delete`` did not work correctly with multiple ``--format`` args.
+
+5.0.4 (2024-11-15)
+++++++++++++++++++
+
+**Bugfixes**
+
+- Fixed bug where some error messages mentioned the wrong arg in the message.
+- Fixed bug where Scrape API was being used for num-found,
+  even if Advanced Search was triggered via page/rows params.
+
+5.0.3 (2024-11-12)
+++++++++++++++++++
+
+**Bugfixes**
+
+- Fixed bug in CLI where some multi-arguments were being treated as single arguments.
+- Fixed bug where InvalidHeader was being raised when a custom scanner was provided in some cases.
+
+5.0.2 (2024-11-11)
+++++++++++++++++++
+
+**Bugfixes**
+
+- Fixed bug where ``ia metadata --spreadsheet`` would fail and return
+  ``ia metadata: error: the following arguments are required: identifier``.
+
+5.0.1 (2024-11-08)
+++++++++++++++++++
+
+**Bugfixes**
+
+- Fix bug where the use of signal.SIGPIPE causes the CLI to crash on Windows (SIGPIPE is not available on Windows).
+
+5.0.0 (2024-11-07)
+++++++++++++++++++
+
+**Features and Improvements**
+
+- Updated the CLI's command-line argument parsing by replacing the obsolete ``docopt``
+  with the native ``argparse`` library, ensuring continued functionality
+  and future compatibility.
+  ***Note: While the CLI functionality hasn't changed, some commands may need to be formatted slightly differently. If you encounter any issues, refer to ``ia --help`` and ``ia {command} --help`` if you run into any issues.***
+
+4.1.0 (2024-05-07)
+++++++++++++++++++
+
+**Bugfixes**
+
+- Use mtime from files.xml if no Last-Modified header is available (e.g. VTT files).
+
+4.0.1 (2024-04-15)
+++++++++++++++++++
+
+**Features and Improvements**
+
+- Partially downloaded files will now automatically resume where they left off when retried.
+- Use ``Last-Modified`` header to set all mtimes (this includes files.xml now).
+
+3.7.0 (2024-03-19)
+++++++++++++++++++
+
+**Features and Improvements**
+
+- Added support for JSON Patch test operations, via the ``expect`` parameter.
+- Added support for moving values via --append-list
+  (Now, rather than ignoring any requests where the value is already present,
+  --append-list will move the value to the end of the list).
+- Switched to importlib-metadata to drop deprecated pkg_resources.
+
+**Bugfixes**
+
+- Fixed automatic size hint on uploads.
+- Fixed bug where auth wasn't being sent for searches with user_aggs params.
+
+3.6.0 (2023-12-27)
+++++++++++++++++++
+
+**Features and Improvements**
+
+- Added ``set_scanner`` and ``--no-scanner`` options to upload to stop ia's default behavior
+  of setting the scanner field in meta.xml on initial upload.
+- ``0`` is now returned instead of an exception when search fails to retrieve the total number
+  of hits for a query.
+
+3.5.0 (2023-05-09)
+++++++++++++++++++
+
+**Bugfixes**
+
+- Fixed bug in ``ia metadata --insert`` where duplicate values were being added in
+  some cases
+
+**Features and Improvements**
+
+- Added timeout option for metadata writes. Set default to 60 seconds.
+
 3.4.0 (2023-04-05)
 ++++++++++++++++++
 
@@ -246,7 +371,7 @@ Release History
 
 **Features and Improvements**
 
-- Added support for remvoing items from simplelists as if they were collections.
+- Added support for removing items from simplelists as if they were collections.
 - Added ``Item.derive()`` method for deriving items.
 - Added ``Item.fixer()`` method for submitting fixer tasks.
 - Added ``--task-args`` to ``ia tasks`` for submitting task args to the Tasks API.

@@ -1,7 +1,7 @@
 #
 # The internetarchive module is a Python/CLI interface to Archive.org.
 #
-# Copyright (C) 2012-2019 Internet Archive
+# Copyright (C) 2012-2024 Internet Archive
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -22,7 +22,7 @@ internetarchive.api
 
 This module implements the Internetarchive API.
 
-:copyright: (C) 2012-2019 by Internet Archive.
+:copyright: (C) 2012-2024 by Internet Archive.
 :license: AGPL 3, see LICENSE for more details.
 """
 from __future__ import annotations
@@ -33,9 +33,8 @@ from typing import Iterable, Mapping, MutableMapping
 import requests
 from urllib3 import Retry
 
-from internetarchive import auth, catalog
+from internetarchive import auth, catalog, files, item, search, session
 from internetarchive import config as config_module
-from internetarchive import files, item, search, session
 from internetarchive.exceptions import AuthenticationError
 
 
@@ -210,6 +209,7 @@ def modify_metadata(
         secret_key=secret_key,
         debug=debug,
         request_kwargs=request_kwargs,
+        refresh=False
     )
 
 
@@ -305,6 +305,7 @@ def download(
     verbose: bool = False,
     ignore_existing: bool = False,
     checksum: bool = False,
+    checksum_archive: bool = False,
     destdir: str | None = None,
     no_directory: bool = False,
     retries: int | None = None,
@@ -313,7 +314,7 @@ def download(
     on_the_fly: bool = False,
     return_responses: bool = False,
     no_change_timestamp: bool = False,
-    timeout: int | float | tuple[int, float] | None = None,
+    timeout: float | tuple[int, float] | None = None,
     **get_item_kwargs,
 ) -> list[requests.Request | requests.Response]:
     r"""Download files from an item.
@@ -334,6 +335,10 @@ def download(
     :param ignore_existing: Skip files that already exist locally.
 
     :param checksum: Skip downloading file based on checksum.
+
+    :param checksum_archive: Skip downloading file based on checksum, and skip
+                             checksum validation if it already succeeded
+                             (will create and use _checksum_archive.txt).
 
     :param destdir: The directory to download files to.
 
@@ -368,6 +373,7 @@ def download(
         verbose=verbose,
         ignore_existing=ignore_existing,
         checksum=checksum,
+        checksum_archive=checksum_archive,
         destdir=destdir,
         no_directory=no_directory,
         retries=retries,
@@ -580,7 +586,7 @@ def get_user_info(access_key: str, secret_key: str) -> dict[str, str]:
     """
     u = "https://s3.us.archive.org"
     p = {"check_auth": 1}
-    r = requests.get(u, params=p, auth=auth.S3Auth(access_key, secret_key))
+    r = requests.get(u, params=p, auth=auth.S3Auth(access_key, secret_key), timeout=10)
     r.raise_for_status()
     j = r.json()
     if j.get("error"):

@@ -1,7 +1,7 @@
 #
 # The internetarchive module is a Python/CLI interface to Archive.org.
 #
-# Copyright (C) 2012-2021 Internet Archive
+# Copyright (C) 2012-2024 Internet Archive
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -20,7 +20,7 @@
 internetarchive.item
 ~~~~~~~~~~~~~~~~~~~~
 
-:copyright: (C) 2012-2021 by Internet Archive.
+:copyright: (C) 2012-2024 by Internet Archive.
 :license: AGPL 3, see LICENSE for more details.
 """
 from __future__ import annotations
@@ -57,7 +57,7 @@ from internetarchive.utils import (
     iter_directory,
     json,
     norm_filepath,
-    recursive_file_count,
+    recursive_file_count_and_size,
     validate_s3_identifier,
 )
 
@@ -589,6 +589,7 @@ class Item(BaseItem):
                  verbose: bool = False,
                  ignore_existing: bool = False,
                  checksum: bool = False,
+                 checksum_archive: bool = False,
                  destdir: str | None = None,
                  no_directory: bool = False,
                  retries: int | None = None,
@@ -602,7 +603,7 @@ class Item(BaseItem):
                  exclude_source: str | list[str] | None = None,
                  stdout: bool = False,
                  params: Mapping | None = None,
-                 timeout: int | float | tuple[int, float] | None = None
+                 timeout: float | tuple[int, float] | None = None
                  ) -> list[Request | Response]:
         """Download files from an item.
 
@@ -626,6 +627,10 @@ class Item(BaseItem):
                                 locally.
 
         :param checksum: Skip downloading file based on checksum.
+
+        :param checksum_archive: Skip downloading file based on checksum, and skip
+                                 checksum validation if it already succeeded
+                                 (will create and use _checksum_archive.txt).
 
         :param destdir: The directory to download files to.
 
@@ -670,6 +675,7 @@ class Item(BaseItem):
         ignore_existing = bool(ignore_existing)
         ignore_errors = bool(ignore_errors)
         checksum = bool(checksum)
+        checksum_archive = bool(checksum_archive)
         no_directory = bool(no_directory)
         return_responses = bool(return_responses)
         no_change_timestamp = bool(no_change_timestamp)
@@ -746,8 +752,8 @@ class Item(BaseItem):
                 ors = True
             else:
                 ors = False
-            r = f.download(path, verbose, ignore_existing, checksum, destdir,
-                           retries, ignore_errors, fileobj, return_responses,
+            r = f.download(path, verbose, ignore_existing, checksum, checksum_archive,
+                           destdir, retries, ignore_errors, fileobj, return_responses,
                            no_change_timestamp, params, None, stdout, ors, timeout)
             if return_responses:
                 responses.append(r)
@@ -770,6 +776,7 @@ class Item(BaseItem):
                         metadata: Mapping,
                         target: str | None = None,
                         append: bool = False,
+                        expect: Mapping | None = None,
                         append_list: bool = False,
                         insert: bool = False,
                         priority: int = 0,
@@ -777,7 +784,10 @@ class Item(BaseItem):
                         secret_key: str | None = None,
                         debug: bool = False,
                         headers: Mapping | None = None,
-                        request_kwargs: Mapping | None = None) -> Request | Response:
+                        reduced_priority: bool = False,
+                        request_kwargs: Mapping | None = None,
+                        timeout: float | None = None,
+                        refresh: bool = True) -> Request | Response:
         """Modify the metadata of an existing item on Archive.org.
 
         Note: The Metadata Write API does not yet comply with the
@@ -793,8 +803,19 @@ class Item(BaseItem):
         :param append: Append value to an existing multi-value
                        metadata field.
 
+        :param expect: Provide a dict of expectations to be tested
+                       server-side before applying patch to item metadata.
+
         :param append_list: Append values to an existing multi-value
                             metadata field. No duplicate values will be added.
+
+        :param refresh: Refresh the item metadata after the request.
+
+        :param reduced_priority: Submit your task at a lower priority.
+                                 This option is helpful to get around rate-limiting.
+                                 Your task will more likely be accepted, but it might
+                                 not run for a long time. Note that you still may be
+                                 subject to rate-limiting.
 
         :returns: A Request if debug else a Response.
 
@@ -810,7 +831,12 @@ class Item(BaseItem):
         secret_key = secret_key or self.session.secret_key
         debug = bool(debug)
         headers = headers or {}
+        expect = expect or {}
         request_kwargs = request_kwargs or {}
+        if timeout:
+            request_kwargs["timeout"] = float(timeout)  # type: ignore
+        else:
+            request_kwargs["timeout"] = 60  # type: ignore
 
         _headers = self.session.headers.copy()
         _headers.update(headers)
@@ -830,8 +856,10 @@ class Item(BaseItem):
             access_key=access_key,
             secret_key=secret_key,
             append=append,
+            expect=expect,
             append_list=append_list,
-            insert=insert)
+            insert=insert,
+            reduced_priority=reduced_priority)
         # Must use Session.prepare_request to make sure session settings
         # are used on request!
         prepared_request = request.prepare()
@@ -839,7 +867,8 @@ class Item(BaseItem):
             return prepared_request
         resp = self.session.send(prepared_request, **request_kwargs)
         # Re-initialize the Item object with the updated metadata.
-        self.refresh()
+        if refresh:
+            self.refresh()
         return resp
 
     # TODO: `list` parameter name shadows the Python builtin
@@ -860,7 +889,7 @@ class Item(BaseItem):
         r = self.session.post(self.urls.metadata, data=data)  # type: ignore
         return r
 
-    def upload_file(self, body,
+    def upload_file(self, body,  # noqa: PLR0915; TODO: Refactor this method to reduce complexity
                     key: str | None = None,
                     metadata: Mapping | None = None,
                     file_metadata: Mapping | None = None,
@@ -876,7 +905,8 @@ class Item(BaseItem):
                     retries_sleep: int | None = None,
                     debug: bool = False,
                     validate_identifier: bool = False,
-                    request_kwargs: MutableMapping | None = None) -> Request | Response:
+                    request_kwargs: MutableMapping | None = None,
+                    set_scanner: bool = True) -> Request | Response:
         """Upload a single file to an item. The item will be created
         if it does not exist.
 
@@ -1039,7 +1069,8 @@ class Item(BaseItem):
                                 file_metadata=file_metadata,
                                 access_key=access_key,
                                 secret_key=secret_key,
-                                queue_derive=queue_derive)
+                                queue_derive=queue_derive,
+                                set_scanner=set_scanner)
             return request
 
         if debug:
@@ -1048,12 +1079,23 @@ class Item(BaseItem):
             return prepared_request
         else:
             try:
+                first_try = True
                 while True:
                     error_msg = ('s3 is overloaded, sleeping for '
                                  f'{retries_sleep} seconds and retrying. '
                                  f'{retries} retries left.')
-                    if retries > 0:
-                        if self.session.s3_is_overloaded(access_key=access_key):
+                    if retries > 0 and not first_try:
+                        try:
+                            overloaded = self.session.s3_is_overloaded(
+                                    access_key=access_key)
+                        except Exception as e:
+                            error_msg = ('error checking if s3 is overloaded via '
+                                         's3.us.archive.org?check_limit=1, '
+                                         f'exception raised: "{e}". '
+                                         f'sleeping for {retries_sleep} seconds and '
+                                         f'retrying. {retries} retries left.')
+                            overloaded = True
+                        if overloaded:
                             sleep(retries_sleep)
                             log.info(error_msg)
                             if verbose:
@@ -1081,6 +1123,7 @@ class Item(BaseItem):
                             print(f' warning: {error_msg}', file=sys.stderr)
                         sleep(retries_sleep)
                         retries -= 1
+                        first_try = False
                         continue
                     else:
                         if response.status_code == 503:
@@ -1099,9 +1142,9 @@ class Item(BaseItem):
                 return response
             except HTTPError as exc:
                 try:
-                    msg = get_s3_xml_text(exc.response.content)
+                    msg = get_s3_xml_text(exc.response.content)  # type: ignore
                 except ExpatError:  # probably HTTP 500 error and response is invalid XML
-                    msg = ('IA S3 returned invalid XML '
+                    msg = ('IA S3 returned invalid XML '  # type: ignore
                            f'(HTTP status code {exc.response.status_code}). '
                            'This is a server side error which is either temporary, '
                            'or requires the intervention of IA admins.')
@@ -1129,7 +1172,8 @@ class Item(BaseItem):
                retries_sleep: int | None = None,
                debug: bool = False,
                validate_identifier: bool = False,
-               request_kwargs: dict | None = None) -> list[Request | Response]:
+               request_kwargs: dict | None = None,
+               set_scanner: bool = True) -> list[Request | Response]:
         r"""Upload files to an item. The item will be created if it
         does not exist.
 
@@ -1186,11 +1230,13 @@ class Item(BaseItem):
 
         responses = []
         file_index = 0
-        if queue_derive and total_files is None:
-            if checksum:
-                total_files = recursive_file_count(files, item=self, checksum=True)
-            else:
-                total_files = recursive_file_count(files, item=self, checksum=False)
+        headers = headers or {}
+        if (queue_derive or not headers.get('x-archive-size-hint')) and total_files == 0:
+            total_files, total_size = recursive_file_count_and_size(files,
+                                                                    item=self,
+                                                                    checksum=checksum)
+            if not headers.get('x-archive-size-hint'):
+                headers['x-archive-size-hint'] = str(total_size)
         file_metadata = None
         for f in files:
             if isinstance(f, dict):
@@ -1235,7 +1281,8 @@ class Item(BaseItem):
                                             retries_sleep=retries_sleep,
                                             debug=debug,
                                             validate_identifier=validate_identifier,
-                                            request_kwargs=request_kwargs)
+                                            request_kwargs=request_kwargs,
+                                            set_scanner=set_scanner)
                     responses.append(resp)
             else:
                 file_index += 1
@@ -1269,7 +1316,8 @@ class Item(BaseItem):
                                         retries_sleep=retries_sleep,
                                         debug=debug,
                                         validate_identifier=validate_identifier,
-                                        request_kwargs=request_kwargs)
+                                        request_kwargs=request_kwargs,
+                                        set_scanner=set_scanner)
                 responses.append(resp)
         return responses
 

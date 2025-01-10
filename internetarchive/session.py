@@ -1,7 +1,7 @@
 #
 # The internetarchive module is a Python/CLI interface to Archive.org.
 #
-# Copyright (C) 2012-2021 Internet Archive
+# Copyright (C) 2012-2024 Internet Archive
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -23,7 +23,7 @@ internetarchive.session
 This module provides an ArchiveSession object to manage and persist
 settings across the internetarchive package.
 
-:copyright: (C) 2012-2021 by Internet Archive.
+:copyright: (C) 2012-2024 by Internet Archive.
 :license: AGPL 3, see LICENSE for more details.
 """
 from __future__ import annotations
@@ -68,7 +68,7 @@ class ArchiveSession(requests.sessions.Session):
         Collection(identifier='nasa', exists=True)
     """
 
-    ITEM_MEDIATYPE_TABLE = {
+    ITEM_MEDIATYPE_TABLE = {  # noqa: RUF012
         'collection': Collection,
     }
 
@@ -264,7 +264,7 @@ class ArchiveSession(requests.sessions.Session):
 
         :param identifier: Globally unique Archive.org identifier.
 
-        :returns: Metadat API response.
+        :returns: Metadata API response.
         """
         request_kwargs = request_kwargs or {}
         url = f'{self.protocol}//{self.host}/metadata/{identifier}'
@@ -333,10 +333,7 @@ class ArchiveSession(requests.sessions.Session):
             'accesskey': access_key,
             'bucket': identifier,
         }
-        try:
-            r = self.get(u, params=p, **request_kwargs)
-        except Exception:
-            return True
+        r = self.get(u, params=p, **request_kwargs)
         try:
             j = r.json()
         except ValueError:

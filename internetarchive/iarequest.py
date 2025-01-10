@@ -1,7 +1,7 @@
 #
 # The internetarchive module is a Python/CLI interface to Archive.org.
 #
-# Copyright (C) 2012-2021 Internet Archive
+# Copyright (C) 2012-2024 Internet Archive
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -20,7 +20,7 @@
 internetarchive.iarequest
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:copyright: (C) 2012-2021 by Internet Archive.
+:copyright: (C) 2012-2024 by Internet Archive.
 :license: AGPL 3, see LICENSE for more details.
 """
 import copy
@@ -46,6 +46,7 @@ class S3Request(requests.models.Request):
                  queue_derive=True,
                  access_key=None,
                  secret_key=None,
+                 set_scanner=True,
                  **kwargs):
 
         super().__init__(**kwargs)
@@ -59,6 +60,7 @@ class S3Request(requests.models.Request):
         self.metadata = metadata
         self.file_metadata = file_metadata
         self.queue_derive = queue_derive
+        self.set_scanner = set_scanner
 
     def prepare(self):
         p = S3PreparedRequest()
@@ -77,6 +79,7 @@ class S3Request(requests.models.Request):
             metadata=self.metadata,
             file_metadata=self.file_metadata,
             queue_derive=self.queue_derive,
+            set_scanner=self.set_scanner,
         )
         return p
 
@@ -84,12 +87,13 @@ class S3Request(requests.models.Request):
 class S3PreparedRequest(requests.models.PreparedRequest):
     def prepare(self, method=None, url=None, headers=None, files=None, data=None,
                 params=None, auth=None, cookies=None, hooks=None, queue_derive=None,
-                metadata=None, file_metadata=None):
+                metadata=None, file_metadata=None, set_scanner=None):
         self.prepare_method(method)
         self.prepare_url(url, params)
         self.prepare_headers(headers, metadata,
                              file_metadata=file_metadata,
-                             queue_derive=queue_derive)
+                             queue_derive=queue_derive,
+                             set_scanner=set_scanner)
         self.prepare_cookies(cookies)
         self.prepare_body(data, files)
         self.prepare_auth(auth, url)
@@ -99,7 +103,8 @@ class S3PreparedRequest(requests.models.PreparedRequest):
         # This MUST go after prepare_auth. Authenticators could add a hook
         self.prepare_hooks(hooks)
 
-    def prepare_headers(self, headers, metadata, file_metadata=None, queue_derive=True):
+    def prepare_headers(self, headers, metadata, file_metadata=None, queue_derive=True,
+                        set_scanner=True):
         """Convert a dictionary of metadata into S3 compatible HTTP
         headers, and append headers to ``headers``.
 
@@ -114,9 +119,15 @@ class S3PreparedRequest(requests.models.PreparedRequest):
         metadata = {} if metadata is None else metadata
         file_metadata = {} if file_metadata is None else file_metadata
 
-        if not metadata.get('scanner'):
+        if set_scanner is True:
             scanner = f'Internet Archive Python library {__version__}'
-            metadata['scanner'] = scanner
+            if metadata.get('scanner'):
+                custom_scanner = metadata['scanner']
+                if not isinstance(custom_scanner, list):
+                    custom_scanner = [custom_scanner]
+                metadata['scanner'] = custom_scanner + [scanner]
+            else:
+                metadata['scanner'] = scanner
         prepared_metadata = prepare_metadata(metadata)
         prepared_file_metadata = prepare_metadata(file_metadata)
 
@@ -168,8 +179,10 @@ class MetadataRequest(requests.models.Request):
                  access_key=None,
                  secret_key=None,
                  append=None,
+                 expect=None,
                  append_list=None,
                  insert=None,
+                 reduced_priority=None,
                  **kwargs):
 
         super().__init__(**kwargs)
@@ -183,8 +196,10 @@ class MetadataRequest(requests.models.Request):
         self.target = target
         self.priority = priority
         self.append = append
+        self.expect = expect
         self.append_list = append_list
         self.insert = insert
+        self.reduced_priority = reduced_priority
 
     def prepare(self):
         p = MetadataPreparedRequest()
@@ -205,8 +220,10 @@ class MetadataRequest(requests.models.Request):
             source_metadata=self.source_metadata,
             target=self.target,
             append=self.append,
+            expect=self.expect,
             append_list=self.append_list,
             insert=self.insert,
+            reduced_priority=self.reduced_priority,
         )
         return p
 
@@ -215,13 +232,16 @@ class MetadataPreparedRequest(requests.models.PreparedRequest):
     def prepare(self, method=None, url=None, headers=None, files=None, data=None,
                 params=None, auth=None, cookies=None, hooks=None, metadata={},  # noqa: B006
                 source_metadata=None, target=None, priority=None, append=None,
-                append_list=None, insert=None):
+                expect=None, append_list=None, insert=None, reduced_priority=None):
         self.prepare_method(method)
         self.prepare_url(url, params)
+        self.identifier = self.url.split("?")[0].split("/")[-1]
+        if reduced_priority:
+            headers['X-Accept-Reduced-Priority'] = '1'
         self.prepare_headers(headers)
         self.prepare_cookies(cookies)
         self.prepare_body(metadata, source_metadata, target, priority, append,
-                          append_list, insert)
+                          append_list, insert, expect)
         self.prepare_auth(auth, url)
         # Note that prepare_auth must be last to enable authentication schemes
         # such as OAuth to work on a fully prepared request.
@@ -230,11 +250,11 @@ class MetadataPreparedRequest(requests.models.PreparedRequest):
         self.prepare_hooks(hooks)
 
     def prepare_body(self, metadata, source_metadata, target, priority, append,
-                     append_list, insert):
+                     append_list, insert, expect):
         priority = priority or -5
 
         if not source_metadata:
-            r = requests.get(self.url)
+            r = requests.get(self.url, timeout=10)
             source_metadata = r.json()
 
         # Write to many targets
@@ -255,21 +275,25 @@ class MetadataPreparedRequest(requests.models.PreparedRequest):
                         patch = prepare_patch(metadata[key],
                                               source_metadata['metadata'],
                                               append,
+                                              expect,
                                               append_list,
                                               insert)
                     except KeyError:
-                        raise ItemLocateError
+                        raise ItemLocateError(f"{self.identifier} cannot be located "
+                                              "because it is dark or does not exist.")
                 elif key.startswith('files'):
                     patch = prepare_files_patch(metadata[key],
                                                 source_metadata['files'],
                                                 append,
                                                 key,
                                                 append_list,
-                                                insert)
+                                                insert,
+                                                expect)
                 else:
                     key = key.split('/')[0]
                     patch = prepare_target_patch(metadata, source_metadata, append,
-                                                 target, append_list, key, insert)
+                                                 target, append_list, key, insert,
+                                                 expect)
                 changes.append({'target': key, 'patch': patch})
             self.data = {
                 '-changes': json.dumps(changes),
@@ -282,16 +306,18 @@ class MetadataPreparedRequest(requests.models.PreparedRequest):
                 target = 'metadata'
                 try:
                     patch = prepare_patch(metadata, source_metadata['metadata'], append,
-                                          append_list, insert)
+                                          expect, append_list, insert)
                 except KeyError:
-                    raise ItemLocateError
+                    raise ItemLocateError(f"{self.identifier} cannot be located "
+                                          "because it is dark or does not exist.")
             elif 'files' in target:
                 patch = prepare_files_patch(metadata, source_metadata['files'], append,
-                                            target, append_list, insert)
+                                            target, append_list, insert, expect)
             else:
                 metadata = {target: metadata}
                 patch = prepare_target_patch(metadata, source_metadata, append,
-                                             target, append_list, target, insert)
+                                             target, append_list, target, insert,
+                                             expect)
             self.data = {
                 '-patch': json.dumps(patch),
                 '-target': target,
@@ -301,7 +327,8 @@ class MetadataPreparedRequest(requests.models.PreparedRequest):
         super().prepare_body(self.data, None)
 
 
-def prepare_patch(metadata, source_metadata, append, append_list=None, insert=None):
+def prepare_patch(metadata, source_metadata, append,
+                  expect=None, append_list=None, insert=None):
     destination_metadata = source_metadata.copy()
     if isinstance(metadata, list):
         prepared_metadata = metadata
@@ -325,11 +352,28 @@ def prepare_patch(metadata, source_metadata, append, append_list=None, insert=No
     # Delete metadata items where value is REMOVE_TAG.
     destination_metadata = delete_items_from_dict(destination_metadata, 'REMOVE_TAG')
     patch = make_patch(source_metadata, destination_metadata).patch
-    return patch
+
+    # Add test operations to patch.
+    patch_tests = []
+    for expect_key in expect:
+        idx = None
+        if '[' in expect_key:
+            idx = int(expect_key.split('[')[1].strip(']'))
+            key = expect_key.split('[')[0]
+            path = f'/{key}/{idx}'
+            p_test = {'op': 'test', 'path': path, 'value': expect[expect_key]}
+        else:
+            path = f'/{expect_key}'
+            p_test = {'op': 'test', 'path': path, 'value': expect[expect_key]}
+
+        patch_tests.append(p_test)
+    final_patch = patch_tests + patch
+
+    return final_patch
 
 
 def prepare_target_patch(metadata, source_metadata, append, target, append_list, key,
-                         insert):
+                         insert, expect):
 
     def dictify(lst, key=None, value=None):
         if not lst:
@@ -346,18 +390,18 @@ def prepare_target_patch(metadata, source_metadata, append, target, append_list,
             source_metadata = source_metadata.get(_k, {})
         else:
             source_metadata[_k] = source_metadata.get(_k, {}).get(_k, {})
-    patch = prepare_patch(metadata, source_metadata, append, append_list, insert)
+    patch = prepare_patch(metadata, source_metadata, append, expect, append_list, insert)
     return patch
 
 
 def prepare_files_patch(metadata, source_metadata, append, target, append_list,
-                        insert):
+                        insert, expect):
     filename = '/'.join(target.split('/')[1:])
     for f in source_metadata:
         if f.get('name') == filename:
             source_metadata = f
             break
-    patch = prepare_patch(metadata, source_metadata, append, append_list, insert)
+    patch = prepare_patch(metadata, source_metadata, append, expect, append_list, insert)
     return patch
 
 
@@ -406,7 +450,7 @@ def prepare_metadata(metadata, source_metadata=None, append=False, append_list=F
         indexed_keys[rm_index(key)] = count
 
     # Initialize the values for all indexed_keys.
-    for key in indexed_keys:
+    for key in indexed_keys:  # noqa: PLC0206
         # Increment the counter so we know how many values the final
         # value in prepared_metadata should have.
         indexed_keys[key] += len(source_metadata.get(key, []))
@@ -437,7 +481,7 @@ def prepare_metadata(metadata, source_metadata=None, append=False, append_list=F
                         continue
                 else:
                     if v in source_metadata[key]:
-                        continue
+                        source_metadata[key] = [x for x in source_metadata[key] if x != v]
                 if not isinstance(source_metadata[key], list):
                     prepared_metadata[key] = [source_metadata[key]]
                 else:
@@ -454,7 +498,11 @@ def prepare_metadata(metadata, source_metadata=None, append=False, append_list=F
             if not isinstance(source_metadata[_key], list):
                 source_metadata[_key] = [source_metadata[_key]]
             source_metadata[_key].insert(index, metadata[key])
-            prepared_metadata[_key] = source_metadata[_key]
+            insert_md = []
+            for _v in source_metadata[_key]:
+                if _v not in insert_md and _v:
+                    insert_md.append(_v)
+            prepared_metadata[_key] = insert_md
         else:
             prepared_metadata[key] = metadata[key]
 

@@ -1,7 +1,7 @@
 #
 # The internetarchive module is a Python/CLI interface to Archive.org.
 #
-# Copyright (C) 2012-2022 Internet Archive
+# Copyright (C) 2012-2024 Internet Archive
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -22,7 +22,7 @@ internetarchive.utils
 
 This module provides utility functions for the internetarchive library.
 
-:copyright: (C) 2012-2022 by Internet Archive.
+:copyright: (C) 2012-2024 by Internet Archive.
 :license: AGPL 3, see LICENSE for more details.
 """
 from __future__ import annotations
@@ -129,10 +129,9 @@ def suppress_keyboard_interrupt_message() -> None:
     old_excepthook = sys.excepthook
 
     def new_hook(type, value, traceback):
-        if type != KeyboardInterrupt:
-            old_excepthook(type, value, traceback)
-        else:
+        if type is KeyboardInterrupt:
             sys.exit(130)
+        old_excepthook(type, value, traceback)
 
     sys.excepthook = new_hook
 
@@ -216,15 +215,19 @@ def get_s3_xml_text(xml_str: str) -> str:
 
 
 def get_file_size(file_obj) -> int | None:
-    try:
-        file_obj.seek(0, os.SEEK_END)
-        size = file_obj.tell()
-        # Avoid OverflowError.
-        if size > sys.maxsize:
+    if is_filelike_obj(file_obj):
+        try:
+            file_obj.seek(0, os.SEEK_END)
+            size = file_obj.tell()
+            # Avoid OverflowError.
+            if size > sys.maxsize:
+                size = None
+            file_obj.seek(0, os.SEEK_SET)
+        except OSError:
             size = None
-        file_obj.seek(0, os.SEEK_SET)
-    except OSError:
-        size = None
+    else:
+        st = os.stat(file_obj)
+        size = st.st_size
     return size
 
 
@@ -237,11 +240,14 @@ def iter_directory(directory: str):
             yield (filepath, key)
 
 
-def recursive_file_count(files, item=None, checksum=False):
-    """Given a filepath or list of filepaths, return the total number of files."""
+def recursive_file_count_and_size(files, item=None, checksum=False):
+    """Given a filepath or list of filepaths, return the total number and size of files.
+    If `checksum` is `True`, skip over files whose MD5 hash matches any file in the `item`.
+    """
     if not isinstance(files, (list, set)):
         files = [files]
     total_files = 0
+    total_size = 0
     if checksum is True:
         md5s = [f.get('md5') for f in item.files]
     else:
@@ -264,24 +270,27 @@ def recursive_file_count(files, item=None, checksum=False):
             except (AttributeError, TypeError):
                 is_dir = False
         if is_dir:
-            for x, _ in iter_directory(f):
-                if checksum is True:
-                    with open(x, 'rb') as fh:
-                        lmd5 = get_md5(fh)
-                    if lmd5 in md5s:
-                        continue
-                total_files += 1
+            it = iter_directory(f)
         else:
+            it = [(f, None)]
+        for x, _ in it:
             if checksum is True:
                 try:
-                    with open(f, 'rb') as fh:
+                    with open(x, 'rb') as fh:
                         lmd5 = get_md5(fh)
                 except TypeError:
                     # Support file-like objects.
-                    lmd5 = get_md5(f)
+                    lmd5 = get_md5(x)
                 if lmd5 in md5s:
                     continue
+            total_size += get_file_size(x)
             total_files += 1
+    return total_files, total_size
+
+
+def recursive_file_count(*args, **kwargs):
+    """Like `recursive_file_count_and_size`, but returns only the file count."""
+    total_files, _ = recursive_file_count_and_size(*args, **kwargs)
     return total_files
 
 
@@ -291,6 +300,16 @@ def is_dir(obj) -> bool:
     try:
         return os.path.isdir(obj)
     except TypeError as exc:
+        return False
+
+
+def is_filelike_obj(obj) -> bool:
+    """Distinguish file-like from path-like objects"""
+    try:
+        os.fspath(obj)
+    except TypeError:
+        return True
+    else:
         return False
 
 
@@ -338,7 +357,7 @@ def reraise_modify(
         else:
             arg_list += [last_arg, append_msg]
     caught_exc.args = tuple(arg_list)
-    raise
+    raise  # noqa: PLE0704
 
 
 def remove_none(obj):
@@ -431,3 +450,10 @@ def parse_dict_cookies(value: str) -> dict[str, str | None]:
     if 'path' not in result:
         result['path'] = '/'
     return result
+
+
+def is_valid_email(email):
+    # Regular expression pattern for a valid email address
+    # Ensures the TLD has at least 2 characters
+    pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None

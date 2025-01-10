@@ -12,17 +12,6 @@ from internetarchive.api import get_item
 from internetarchive.cli import ia
 from internetarchive.utils import json
 
-try:
-    FileNotFoundError
-except NameError:
-    FileNotFoundError = IOError
-
-try:
-    WindowsError  # type: ignore[used-before-def]
-except NameError:
-    class WindowsError(Exception):
-        pass
-
 PROTOCOL = 'https:'
 BASE_URL = 'https://archive.org/'
 METADATA_URL = f'{BASE_URL}metadata/'
@@ -38,7 +27,6 @@ NASA_EXPECTED_FILES = {
     'nasa_meta.xml',
     'nasa_reviews.xml',
     'nasa_itemimage.jpg',
-    'globe_west_540_thumb.jpg',
     '__ia_thumb.jpg',
 }
 
@@ -74,7 +62,7 @@ def load_test_data_file(filename):
 
 
 def call_cmd(cmd, expected_exit_code=0):
-    proc = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
+    proc = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)  # noqa: S602
     stdout, stderr = proc.communicate()
     stdout = stdout.decode('utf-8').strip()
     stderr = stderr.decode('utf-8').strip()
@@ -134,5 +122,5 @@ def nasa_metadata():
 
 # TODO: Why is this function defined twice in this file?  See issue #505
 @pytest.fixture  # type: ignore
-def nasa_item(nasa_mocker):
+def nasa_item(nasa_mocker):  # noqa: F811
     return get_item('nasa')

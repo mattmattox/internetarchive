@@ -3,74 +3,73 @@
 Installation
 ============
 
+Installing `internetarchive` with `pipx`
+----------------------------------------
+The `internetarchive` library is a Python tool for interacting with the Internet Archive, allowing you to search, download, and upload files. To make it easy to use, we recommend installing it with `pipx`, a tool that installs Python applications in isolated environments.
 
-System-Wide Installation
-------------------------
+**Note**: If you only need the command-line tool and don’t plan to use the Python library, you can download a binary instead. See the :ref:`binaries` section below for more information.
 
-Installing the ``internetarchive`` library globally on your system can be done with `pip <http://www.pip-installer.org/>`_.
-This is the recommended method for installing ``internetarchive`` (`see below <installation.html#installing-pip>`_ for details on installing pip)::
+What is `pipx`?
+~~~~~~~~~~~~~~~
+`pipx` is a tool for installing and running Python applications in isolated environments. It ensures that the tools you install don’t interfere with other Python projects or system-wide packages. It’s perfect for CLI tools like `internetarchive`.
 
-    $ sudo pip install internetarchive
+Prerequisites
+~~~~~~~~~~~~~
+Before installing `internetarchive`, you’ll need:
 
-or, with `easy_install <http://pypi.python.org/pypi/setuptools>`_::
+1. **Python 3.9 or later**: Python 3.9 is the oldest version still officially supported by the Python development team (as of October 2023). You can check your Python version by running:
+   ::
 
-    $ sudo easy_install internetarchive
+     python --version
 
-Either of these commands will install the ``internetarchive`` Python library and ``ia`` command-line tool on your system.
+   If Python is not installed, download it from `python.org <https://www.python.org/downloads/>`_.
+   On MacOS, you can install a supported version of Python with `Homebrew <https://brew.sh/>`_ (e.g. ``brew install python3``).
 
-**Note**: Some versions of Mac OS X come with Python libraries that are required by ``internetarchive`` (e.g. the Python package ``six``).
-This can cause installation issues. If your installation is failing with a message that looks something like::
+2. **`pipx`**: If you don’t have `pipx` installed, please refer to the `pipx documentation <https://pipx.pypa.io/stable/installation/>`_ for installation instructions.
 
-    OSError: [Errno 1] Operation not permitted: '/var/folders/bk/3wx7qs8d0x79tqbmcdmsk1040000gp/T/pip-TGyjVo-uninstall/System/Library/Frameworks/Python.framework/Versions/2.7/Extras/lib/python/six-1.4.1-py2.7.egg-info'
+Installing `internetarchive`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Once `pipx` is installed, you can install `internetarchive` with a single command:
+::
 
-You can use the ``--ignore-installed`` parameter in ``pip`` to ignore the libraries that are already installed, and continue with the rest of the installation::
+  pipx install internetarchive
 
-    $ sudo pip install --ignore-installed internetarchive
+This will download and install the `internetarchive` library in an isolated environment, making it available as a command-line tool.
 
-More details on this issue can be found here: https://github.com/pypa/pip/issues/3165
+Verifying the Installation
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+To confirm that `internetarchive` is installed correctly, run:
+::
 
-Installing Pip
-~~~~~~~~~~~~~~
+  ia --version
 
-Pip can be `installed with the get-pip.py script <https://pip.pypa.io/en/stable/installing/>`_::
+If the installation was successful, this will display the version of `internetarchive`.
 
-    $ curl -LOs https://bootstrap.pypa.io/get-pip.py
-    $ python get-pip.py
+Upgrading `internetarchive`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+To upgrade `internetarchive` to the latest version, use:
+::
 
+  pipx upgrade internetarchive
 
-virtualenv
-----------
+Uninstalling `internetarchive`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you no longer need `internetarchive`, you can uninstall it with:
+::
 
-If you don't want to, or can't, install the package system-wide you can use ``virtualenv`` to create an isolated Python environment.
+  pipx uninstall internetarchive
 
-First, make sure ``virtualenv`` is installed on your system. If it's not, you can do so with pip::
+Troubleshooting
+~~~~~~~~~~~~~~~
+If you encounter any issues:
 
-    $ sudo pip install virtualenv
+- **Permission Errors**: Ensure you’re not using `sudo` with `pipx`. It’s designed to work without elevated permissions.
+- **Command Not Found**: Restart your terminal after installing `pipx` or run `pipx ensurepath` again.
+- **Python Version Issues**: Ensure you’re using Python 3.9 or later.
 
-With ``easy_install``::
+For further assistance with `pipx`, refer to the `pipx documentation <https://pipx.pypa.io/stable/>`_.
 
-    $ sudo easy_install virtualenv
-
-Or your systems package manager, ``apt-get`` for example::
-
-    $ sudo apt-get install python-virtualenv
-
-Once you have ``virtualenv`` installed on your system, create a virtualenv::
-
-    $ mkdir myproject
-    $ cd myproject
-    $ virtualenv venv
-    New python executable in venv/bin/python
-    Installing setuptools, pip............done.
-
-Activate your virtualenv::
-
-    $ . venv/bin/activate
-
-Install ``internetarchive`` into your virtualenv::
-
-    $ pip install internetarchive
-
+.. _binaries:
 
 Binaries
 --------
@@ -80,52 +79,6 @@ Binaries are also available for the ``ia`` command-line tool::
     $ curl -LOs https://archive.org/download/ia-pex/ia
     $ chmod +x ia
 
-Binaries are generated with `PEX <https://github.com/pantsbuild/pex>`_. The only requirement for using the binaries is that you have Python 3 installed on a Unix-like operating system.
+Binaries are generated with `PEX <https://github.com/pantsbuild/pex>`_. The only requirement for using the binaries is that you have a supported version of Python 3 installed on a Unix-like operating system.
 
 For more details on the command-line interface please refer to the `README <https://github.com/jjjake/internetarchive/blob/master/README.rst>`_, or ``ia help``.
-
-
-Python 2
---------
-
-If you are on an older operating system that only has Python 2 installed, it's highly suggested that you upgrade to Python 3. If for any reason you are not able to, the latest version of ``ia`` that supports Python 2 is 2.3.0.
-
-You can install and use version v2.3.0 with pip::
-
-    $ pip install internetarchive==2.3.0
-
-You can also download a binary of v2.3.0::
-
-    $ curl -LOs https://archive.org/download/ia-pex/ia-py2
-    $ chmod +x ia-py2
-
-
-Snap
-----
-
-You can install the latest ``ia`` `snap <https://snapcraft.io>`_, and help testing the most recent changes of the master branch in `all the supported Linux distros <https://snapcraft.io/docs/core/install>`_ with::
-
-    $ sudo snap install ia --edge
-
-Every time a new version of ``ia`` is pushed to the store, you will get it updated automatically.
-
-Get the Code
-------------
-
-Internetarchive is `actively developed on GitHub <https://github.com/jjjake/internetarchive>`_.
-
-You can either clone the public repository::
-
-    $ git clone git://github.com/jjjake/internetarchive.git
-
-Download the `tarball <https://github.com/jjjake/internetarchive/tarball/master>`_::
-
-    $ curl -OL https://github.com/jjjake/internetarchive/tarball/master
-
-Or, download the `zipball <https://github.com/jjjake/internetarchive/zipball/master>`_::
-
-    $ curl -OL https://github.com/jjjake/internetarchive/zipball/master
-
-Once you have a copy of the source, you can install it into your site-packages easily::
-
-    $ python setup.py install
